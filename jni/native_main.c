@@ -1,4 +1,4 @@
-// native_main.c - 统一使用 input_event_test 结构体
+// native_main.c - 添加 XY 转换开关
 #include <android_native_app_glue.h>
 #include <android/log.h>
 #include <android/input.h>
@@ -25,15 +25,56 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 
-// ==================== 自定义固定大小结构体（跨平台兼容）====================
-// 使用 long long 确保32位和64位系统大小一致
+// ==================== 自定义固定大小结构体 ====================
 typedef struct {
-    long long tv_sec;   // 8字节
-    long long tv_usec;  // 8字节
+    long long tv_sec;
+    long long tv_usec;
     unsigned short type;
     unsigned short code;
     unsigned int value;
-} input_event_test;  // 8+8+2+2+4 = 24字节，固定大小
+} input_event_test;
+
+// ==================== 分辨率配置 ====================
+// 发送端（电视，竖屏）
+#define SENDER_WIDTH 2376
+#define SENDER_HEIGHT 1080
+
+// 接收端（横屏）
+#define RECEIVER_WIDTH 2376
+#define RECEIVER_HEIGHT 1080
+
+// ==================== XY 转换开关 ====================
+// 0: 不转换（直接缩放）
+// 1: 交换 XY（竖屏转横屏）
+// 2: 只交换不缩放
+#define XY_SWAP_MODE 0  // 修改这里：0=不转换, 1=竖屏转横屏, 2=只交换
+
+// 坐标转换函数
+int map_x(int x, int y) {
+    switch (XY_SWAP_MODE) {
+        case 0:  // 不转换，直接缩放
+            return x * RECEIVER_WIDTH / SENDER_WIDTH;
+        case 1:  // 竖屏转横屏：Y -> X
+            return y * RECEIVER_WIDTH / SENDER_HEIGHT;
+        case 2:  // 只交换，不缩放
+            return y;
+        default:
+            return x * RECEIVER_WIDTH / SENDER_WIDTH;
+    }
+}
+
+int map_y(int x, int y) {
+    switch (XY_SWAP_MODE) {
+        case 0:  // 不转换，直接缩放
+            return y * RECEIVER_HEIGHT / SENDER_HEIGHT;
+        case 1:  // 竖屏转横屏：X -> Y
+            return x * RECEIVER_HEIGHT / SENDER_WIDTH;
+        case 2:  // 只交换，不缩放
+            return x;
+        default:
+            return y * RECEIVER_HEIGHT / SENDER_HEIGHT;
+    }
+}
 
 // ==================== 配置 ====================
 #define TOUCH_RECEIVER_IP "192.168.36.1"
@@ -133,30 +174,28 @@ int send_input_event_test(int type, int code, int value) {
         return -1;
     }
     
-    LOGD("发送事件: type=%d, code=%d, value=%d", type, code, value);
     return 0;
 }
 
-// 发送触摸事件
+// 发送触摸事件（带坐标转换）
 void send_touch_event(int id, int x, int y, int action) {
+    // 转换坐标
+    int mapped_x = map_x(x, y);
+    int mapped_y = map_y(x, y);
+    
+    LOGD("坐标转换: (%d,%d) -> (%d,%d) [模式=%d]", x, y, mapped_x, mapped_y, XY_SWAP_MODE);
+    
     if (action == 0) {  // 按下
-        // ABS_MT_SLOT
         send_input_event_test(EV_ABS, ABS_MT_SLOT, id % 10);
-        
-        // ABS_MT_TRACKING_ID
         send_input_event_test(EV_ABS, ABS_MT_TRACKING_ID, id);
-        
-        // 坐标
-        send_input_event_test(EV_ABS, ABS_MT_POSITION_X, x);
-        send_input_event_test(EV_ABS, ABS_MT_POSITION_Y, y);
-        
-        // BTN_TOUCH
+        send_input_event_test(EV_ABS, ABS_MT_POSITION_X, mapped_x);
+        send_input_event_test(EV_ABS, ABS_MT_POSITION_Y, mapped_y);
         send_input_event_test(EV_KEY, BTN_TOUCH, 1);
         
     } else if (action == 1) {  // 移动
         send_input_event_test(EV_ABS, ABS_MT_SLOT, id % 10);
-        send_input_event_test(EV_ABS, ABS_MT_POSITION_X, x);
-        send_input_event_test(EV_ABS, ABS_MT_POSITION_Y, y);
+        send_input_event_test(EV_ABS, ABS_MT_POSITION_X, mapped_x);
+        send_input_event_test(EV_ABS, ABS_MT_POSITION_Y, mapped_y);
         
     } else if (action == 2) {  // 抬起
         send_input_event_test(EV_ABS, ABS_MT_SLOT, id % 10);
@@ -243,7 +282,7 @@ int handle_touch_event(AInputEvent* event) {
             int x = (int) AMotionEvent_getX(event, pointerIndex);
             int y = (int) AMotionEvent_getY(event, pointerIndex);
             
-            LOGI("DOWN: id=%d, x=%d, y=%d", id, x, y);
+            LOGI("DOWN: id=%d, 原始坐标=(%d,%d)", id, x, y);
             send_touch_event(id, x, y, 0);
             add_touch_point(id, x, y);
             break;
@@ -406,7 +445,24 @@ void* audio_decode_thread(void* arg) {
 
 // ==================== NativeActivity 入口 ====================
 void android_main(struct android_app* app) {
-    LOGI("NativeActivity 启动 - 固定结构体大小=%d", (int)sizeof(input_event_test));
+    LOGI("========================================");
+    LOGI("NativeActivity 启动");
+    LOGI("固定结构体大小: %d", (int)sizeof(input_event_test));
+    LOGI("发送端分辨率: %dx%d", SENDER_WIDTH, SENDER_HEIGHT);
+    LOGI("接收端分辨率: %dx%d", RECEIVER_WIDTH, RECEIVER_HEIGHT);
+    LOGI("XY转换模式: %d", XY_SWAP_MODE);
+    switch (XY_SWAP_MODE) {
+        case 0:
+            LOGI("  模式0: 不转换，直接缩放");
+            break;
+        case 1:
+            LOGI("  模式1: 竖屏转横屏 (Y->X, X->Y)");
+            break;
+        case 2:
+            LOGI("  模式2: 只交换XY，不缩放");
+            break;
+    }
+    LOGI("========================================");
     
     app->onInputEvent = on_input_event;
     connect_touch_receiver();
@@ -427,7 +483,9 @@ void android_main(struct android_app* app) {
         
         if (app->window && !nativeWindow) {
             nativeWindow = app->window;
-            LOGI("窗口已创建");
+            LOGI("窗口已创建，分辨率: %dx%d", 
+                 ANativeWindow_getWidth(nativeWindow),
+                 ANativeWindow_getHeight(nativeWindow));
         }
         
         usleep(10000);
