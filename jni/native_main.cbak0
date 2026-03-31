@@ -36,8 +36,8 @@ typedef struct {
 
 // ==================== 分辨率配置 ====================
 // 发送端（电视，竖屏）
-int  SENDER_WIDTH= 1920;
-int  SENDER_HEIGHT= 1080;
+#define SENDER_WIDTH 2376
+#define SENDER_HEIGHT 1080
 
 // 接收端（横屏）
 #define RECEIVER_WIDTH 2376
@@ -77,9 +77,9 @@ int map_y(int x, int y) {
 }
 
 // ==================== 配置 ====================
-#define TOUCH_RECEIVER_IP "192.168.100.1"
-#define TOUCH_RECEIVER_PORT 9000
-#define VIDEO_SERVER_IP "192.168.100.1"
+#define TOUCH_RECEIVER_IP "192.168.36.1"
+#define TOUCH_RECEIVER_PORT 6666
+#define VIDEO_SERVER_IP "192.168.36.1"
 #define VIDEO_SERVER_PORT 9999
 #define AUDIO_SERVER_PORT 9998
 
@@ -445,7 +445,25 @@ void* audio_decode_thread(void* arg) {
 
 // ==================== NativeActivity 入口 ====================
 void android_main(struct android_app* app) {
+    LOGI("========================================");
     LOGI("NativeActivity 启动");
+    LOGI("固定结构体大小: %d", (int)sizeof(input_event_test));
+    LOGI("发送端分辨率: %dx%d", SENDER_WIDTH, SENDER_HEIGHT);
+    LOGI("接收端分辨率: %dx%d", RECEIVER_WIDTH, RECEIVER_HEIGHT);
+    LOGI("XY转换模式: %d", XY_SWAP_MODE);
+    switch (XY_SWAP_MODE) {
+        case 0:
+            LOGI("  模式0: 不转换，直接缩放");
+            break;
+        case 1:
+            LOGI("  模式1: 竖屏转横屏 (Y->X, X->Y)");
+            break;
+        case 2:
+            LOGI("  模式2: 只交换XY，不缩放");
+            break;
+    }
+    LOGI("========================================");
+    
     app->onInputEvent = on_input_event;
     connect_touch_receiver();
     
@@ -468,31 +486,10 @@ void android_main(struct android_app* app) {
             LOGI("窗口已创建，分辨率: %dx%d", 
                  ANativeWindow_getWidth(nativeWindow),
                  ANativeWindow_getHeight(nativeWindow));
-                 SENDER_WIDTH=ANativeWindow_getWidth(nativeWindow);
-    SENDER_HEIGHT=ANativeWindow_getHeight(nativeWindow);
-    LOGI("========================================");
-    LOGI("固定结构体大小: %d", (int)sizeof(input_event_test));
-    LOGI("发送端分辨率: %dx%d", SENDER_WIDTH, SENDER_HEIGHT);
-    LOGI("接收端分辨率: %dx%d", RECEIVER_WIDTH, RECEIVER_HEIGHT);
-    LOGI("XY转换模式: %d", XY_SWAP_MODE);
-    switch (XY_SWAP_MODE) {
-        case 0:
-            LOGI("  模式0: 不转换，直接缩放");
-            break;
-        case 1:
-            LOGI("  模式1: 竖屏转横屏 (Y->X, X->Y)");
-            break;
-        case 2:
-            LOGI("  模式2: 只交换XY，不缩放");
-            break;
-    }
-    LOGI("========================================");
-    
         }
         
         usleep(10000);
     }
-    
     
     running = 0;
     pthread_join(videoThread, NULL);

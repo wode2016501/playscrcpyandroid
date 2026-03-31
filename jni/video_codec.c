@@ -48,7 +48,7 @@ void video_decode(int fd, ANativeWindow* window, int* running) {
     LOGI("视频解码开始");
     
     int buffersize = 1024 * 1024 * 5;
-    //char* buffer = malloc(buffersize);
+   // char* buffer = malloc(buffersize);
     int inputCount = 0, outputCount = 0;
     
     while (*running) {
