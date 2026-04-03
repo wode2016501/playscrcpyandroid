@@ -9,7 +9,7 @@ int socket_local_client;
  shell: adb shell chmod 777 /data/local/tmp/a.out
  shell: adb shell /data/local/tmp/a.out 9999 scrcpy
 */
-
+#include <pthread.h>
 #include <stdio.h>
 #include <arpa/inet.h>  // inet_addr() sockaddr_in
 #include <string.h>     // bzero()
@@ -18,13 +18,23 @@ int socket_local_client;
 #include <stdlib.h> // exit()
 #include <sys/select.h>
 #define BUFFER_SIZE 1024 * 1024 * 2
+#define TOU_SIZE 500
 #include <signal.h>
+static pthread_t serjar; 
+char *shjar=0; 
 int socket_local_client(char *a, int b, int c);
 int read_yz(int fd, char *p, int size_max);
 int read_(int fd, void *p, int size);
 int htou = 0; // 77;
 int server_socket, client_socket;
 // int status = 0;
+
+
+void* serjar_thread(void* arg) {
+	system(shjar); 
+	pthread_detach(pthread_self());
+	return 0;
+}
 void handle_sigpipe(int signo)
 {
     fprintf(stderr, "客户端异常退出\n");
@@ -32,20 +42,23 @@ void handle_sigpipe(int signo)
     //  close(server_socket);
     //  return 0;
 }
-
+char *h264 = "h264";
 int main(int argc, char **argv)
 {
     int port = 8080;
-    if (argc > 1)
-        port = atoi(argv[1]);
-    if (port < 1)
-    {
+      char scrcpyport[200]; 
+    if(argc==5){
+    	    port = atoi(argv[1]);
+    	    sprintf(scrcpyport,"scrcpy_%08d",atoi(argv[2])); 
+    	    htou = atoi(argv[4]);
+    	    shjar=argv[3]; 
+    }
+    else
+     {
         printf("端口错误\n");
-        printf("用法: %s [端口号] 【跳过开头字节 默认%d】\n", argv[0], htou);
+        printf("用法: %s [端口号]  [scrcpy端口] [启动scrcpy_server脚本]【跳过开头字节 默认%d】\n", argv[0], htou);
         exit(1);
     }
-    if (argc > 3)
-        htou = atoi(argv[3]);
     printf("端口 %d htou: %d\n", port, htou);
     signal(SIGPIPE, handle_sigpipe);
     int fd = -1;
@@ -91,7 +104,7 @@ int main(int argc, char **argv)
     struct timeval wodetime;
     wodetime.tv_sec = 10;
     wodetime.tv_usec = 0;
-    char tou[8024];
+    char tou[TOU_SIZE];
     int tousize = 0;
     char *p = 0;
     int count = 0;
@@ -113,11 +126,13 @@ int main(int argc, char **argv)
                 close(server_socket);
                 return 0;
             }
+              pthread_create(&serjar, NULL, serjar_thread, NULL);
             client_arr[0] = client_socket;
             client_length++;
-            printf("打开文件: %s\n", argv[2]);
+                    printf("打开文件: %s\n", scrcpyport);
             fflush(stdout);
-            fd = socket_local_client(argv[2], 0, 1);
+            sleep(1); 
+            fd = socket_local_client(scrcpyport, 0, 1);
             if (fd < 0)
             {
                 printf("打开文件失败: %s\n", argv[2]);
@@ -132,6 +147,7 @@ int main(int argc, char **argv)
             tousize = 0;
             if (htou < 1)
             {
+                sleep(1);
                 ret = read(fd, p, BUFFER_SIZE);
                 continue;
             }
@@ -142,21 +158,42 @@ int main(int argc, char **argv)
                 close(server_socket);
                 return 0;
             }
+            printf("读取文件: %s成功\n", argv[2]);
+            fflush(stdout);
 
             p += htou;
             tousize += htou;
             printf("htou %d\n", htou);
-            ret = read_yz(fd, p, 8024 - htou);
-            if (ret == -1)
+            char *type = p - 4;
+            for (int i = 0; i < 4; i++)
+                printf("%#x ", type[i]);
+                printf("\n");
+            if (strncmp(type, h264, 4) == 0)
             {
-                printf("读取文件失败2: %s\n", argv[2]);
-                close(server_socket);
-                return 0;
+                printf("检测到h264文件\n");
+                // 读取长x宽信息
+                ret = read_(fd, p, 8);
+                if (ret != 8)
+                {
+                    printf("读取文件失败2: %s\n", argv[2]);
+                    close(server_socket);
+                    return 0;
+                }
+                p += 8;
+                tousize += 8;
+                ret = read_yz(fd, p, TOU_SIZE - tousize);
+                if (ret == -1)
+                {
+                    printf("读取文件失败2: %s\n", argv[2]);
+                    close(server_socket);
+                    return 0;
+                }
+                for (int i = 0; i < 12; i++)
+                    printf("%#x ", p[i]);
+                printf("\n");
+                tousize += ret;
             }
-            for (int i = 0; i < 12; i++)
-                printf("%#x ", p[i]);
-            printf("\n");
-            tousize += ret;
+
             printf("tousize %d\n", tousize);
             write(client_socket, tou, tousize);
             continue;
@@ -351,7 +388,7 @@ int read_yz(int fd, char *p, int size_max) // 读取yizhen数据
     }
     size += 8;
     p += 8;
-    ret = read_(fd, p, 4); // dts
+    ret = read_(fd, p, 4); // size
     if (ret != 4)
     {
         return -1;

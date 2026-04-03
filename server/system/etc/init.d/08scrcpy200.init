@@ -3,5 +3,4 @@ while sleep 1;do
 ps -A |grep com.android.systemui && break
 done
 sleep 3
-mkdir -p /data/log
-while  sleep 5 ;do scrcpy-server200  9999 scrcpy_00000001 69 ; done  2>/data/log/scrcpy200.log.err  >/data/log/scrcpy200.log
+while  sleep 5 ;do /data/bin/scrcpy-server200    9999  1  /data/bin/video.sh  69 ; done  2>/data/log/scrcpy200.log.err  >/data/log/scrcpy200.log
