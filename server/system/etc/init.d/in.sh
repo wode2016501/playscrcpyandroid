@@ -1,4 +1,4 @@
 #! /system/bin/sh
 while sleep 1;do 
-in
+inin
 done
