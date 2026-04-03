@@ -165,9 +165,10 @@ int map_y(int x, int y) {
 }
 
 // ==================== 配置 ====================
-#define TOUCH_RECEIVER_IP "192.168.100.1"
+
 #define TOUCH_RECEIVER_PORT 9000
-#define VIDEO_SERVER_IP "192.168.100.1"
+#define IP "192.168.100.1"
+char ipip[20]; 
 #define VIDEO_SERVER_PORT 9999
 #define AUDIO_SERVER_PORT 9998
 
@@ -229,7 +230,7 @@ int connect_touch_receiver() {
         close(touchSocket);
         touchSocket = -1;
     }
-    touchSocket = tcp_connect(TOUCH_RECEIVER_IP, TOUCH_RECEIVER_PORT);
+    touchSocket = tcp_connect(ipip, TOUCH_RECEIVER_PORT);
     return touchSocket;
 }
 
@@ -492,7 +493,7 @@ int readyz(int fd, char* buf, int size_max) {
 // ==================== 视频解码线程 ====================
 void* video_decode_thread(void* arg) {
     LOGI("视频解码线程启动");
-    int videoFd = tcp_connect(VIDEO_SERVER_IP, VIDEO_SERVER_PORT);
+    int videoFd = tcp_connect(ipip, VIDEO_SERVER_PORT);
     if (videoFd < 0) {
         LOGE("连接视频服务器失败");
         return NULL;
@@ -518,7 +519,7 @@ void* video_decode_thread(void* arg) {
 // ==================== 音频解码线程 ====================
 void* audio_decode_thread(void* arg) {
     LOGI("音频解码线程启动");
-    int audioFd = tcp_connect(VIDEO_SERVER_IP, AUDIO_SERVER_PORT);
+    int audioFd = tcp_connect(ipip, AUDIO_SERVER_PORT);
     if (audioFd < 0) {
         LOGE("连接音频服务器失败");
         return NULL;
@@ -563,6 +564,21 @@ static void on_app_cmd(struct android_app* app, int32_t cmd) {
 
 // ==================== NativeActivity 入口 ====================
 void android_main(struct android_app* app) {
+    sprintf(ipip,"%s",IP); 
+    int fd=open("/sdcard/scrcpy.txt",0); 
+    if(fd>0){
+        memset(ipip,0,20);
+        read(fd,ipip,20);
+        if(strlen(ipip)<6)
+            sprintf(ipip,"%s",IP);
+            
+            //char *pp=strchr(ipip,'\n');
+           // if(pp!=0)*pp=0; 
+           // p=strchr(ipip,' ');
+           // if(p!=0)*p=0; 
+            
+        clone(fd); 
+    }
     LOGI("NativeActivity 启动");
     app->onInputEvent = on_input_event;
     app->onAppCmd = on_app_cmd;  // ★ 添加生命周期回调
@@ -594,6 +610,7 @@ void android_main(struct android_app* app) {
     LOGI("发送端分辨率: %dx%d", SENDER_WIDTH, SENDER_HEIGHT);
     LOGI("接收端分辨率: %dx%d", RECEIVER_WIDTH, RECEIVER_HEIGHT);
     LOGI("XY转换模式: %d", XY_SWAP_MODE);
+    LOGI("IP: %s",ipip);
     switch (XY_SWAP_MODE) {
         case 0:
             LOGI("  模式0: 不转换，直接缩放");
