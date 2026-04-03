@@ -25,6 +25,94 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 
+
+
+
+// ==================== 全屏设置 ====================
+void set_fullscreen(struct android_app* app) {
+    JNIEnv* env = NULL;
+    
+    // 获取 JNI 环境
+    if ((*app->activity->vm)->GetEnv(app->activity->vm, (void**)&env, JNI_VERSION_1_6) != JNI_OK) {
+        if ((*app->activity->vm)->AttachCurrentThread(app->activity->vm, &env, NULL) != JNI_OK) {
+            LOGE("无法获取 JNI 环境");
+            return;
+        }
+    }
+    
+    // 获取 Activity（不删除，这是全局引用）
+    jobject activity = app->activity->clazz;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    
+    // 获取 getWindow 方法
+    jmethodID getWindow = (*env)->GetMethodID(env, cls, "getWindow", "()Landroid/view/Window;");
+    if (getWindow == NULL) {
+        LOGE("无法获取 getWindow 方法");
+        (*env)->DeleteLocalRef(env, cls);
+        return;
+    }
+    
+    jobject window = (*env)->CallObjectMethod(env, activity, getWindow);
+    if (window == NULL) {
+        LOGE("window 为 NULL");
+        (*env)->DeleteLocalRef(env, cls);
+        return;
+    }
+    
+    // 获取 Window 类
+    jclass windowClass = (*env)->FindClass(env, "android/view/Window");
+    if (windowClass == NULL) {
+        LOGE("无法找到 Window 类");
+        (*env)->DeleteLocalRef(env, window);
+        (*env)->DeleteLocalRef(env, cls);
+        return;
+    }
+    
+    // 设置 FLAG_FULLSCREEN 和 FLAG_KEEP_SCREEN_ON
+    jint FLAG_FULLSCREEN = 0x00000400;
+    jint FLAG_KEEP_SCREEN_ON = 0x00000040;
+    
+    jmethodID addFlags = (*env)->GetMethodID(env, windowClass, "addFlags", "(I)V");
+    if (addFlags != NULL) {
+        (*env)->CallVoidMethod(env, window, addFlags, FLAG_FULLSCREEN | FLAG_KEEP_SCREEN_ON);
+        LOGI("✓ 设置 FLAG_FULLSCREEN 和 FLAG_KEEP_SCREEN_ON");
+    }
+    
+    // 隐藏导航栏和状态栏
+    jmethodID getDecorView = (*env)->GetMethodID(env, windowClass, "getDecorView", "()Landroid/view/View;");
+    if (getDecorView != NULL) {
+        jobject decorView = (*env)->CallObjectMethod(env, window, getDecorView);
+        if (decorView != NULL) {
+            jclass viewClass = (*env)->FindClass(env, "android/view/View");
+            if (viewClass != NULL) {
+                jint SYSTEM_UI_FLAG_HIDE_NAVIGATION = 0x00000002;
+                jint SYSTEM_UI_FLAG_FULLSCREEN = 0x00000004;
+                jint SYSTEM_UI_FLAG_IMMERSIVE_STICKY = 0x00001000;
+                
+                jmethodID setSystemUiVisibility = (*env)->GetMethodID(env, viewClass, "setSystemUiVisibility", "(I)V");
+                if (setSystemUiVisibility != NULL) {
+                    (*env)->CallVoidMethod(env, decorView, setSystemUiVisibility, 
+                                           SYSTEM_UI_FLAG_HIDE_NAVIGATION | 
+                                           SYSTEM_UI_FLAG_FULLSCREEN | 
+                                           SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+                    LOGI("✓ 隐藏导航栏和状态栏");
+                }
+                (*env)->DeleteLocalRef(env, viewClass);
+            }
+            (*env)->DeleteLocalRef(env, decorView);
+        }
+    }
+    
+    LOGI("✓ 全屏模式已启用");
+    
+    // 清理本地引用（只删除我们创建的）
+    (*env)->DeleteLocalRef(env, windowClass);
+    (*env)->DeleteLocalRef(env, window);
+    (*env)->DeleteLocalRef(env, cls);
+    
+    // 注意：不删除 activity，因为它是全局引用
+}
+
 // ==================== 自定义固定大小结构体 ====================
 typedef struct {
     long long tv_sec;
@@ -47,7 +135,7 @@ int  SENDER_HEIGHT= 1080;
 // 0: 不转换（直接缩放）
 // 1: 交换 XY（竖屏转横屏）
 // 2: 只交换不缩放
-#define XY_SWAP_MODE 0  // 修改这里：0=不转换, 1=竖屏转横屏, 2=只交换
+#define XY_SWAP_MODE  0 // 修改这里：0=不转换, 1=竖屏转横屏, 2=只交换
 
 // 坐标转换函数
 int map_x(int x, int y) {
@@ -443,21 +531,52 @@ void* audio_decode_thread(void* arg) {
     return NULL;
 }
 
+
+// ==================== 应用生命周期 ====================
+
+static void on_app_cmd(struct android_app* app, int32_t cmd) {
+    switch (cmd) {
+        case APP_CMD_PAUSE:
+            LOGI("应用进入后台");
+            exit(0); 
+            running=2;  // ★ 暂停解码
+            break;
+        case APP_CMD_RESUME:
+            LOGI("应用恢复前台");
+            break;
+        case APP_CMD_WINDOW_RESIZED:
+            LOGI("窗口大小改变");
+            break;
+        case APP_CMD_WINDOW_REDRAW_NEEDED:
+            LOGI("窗口需要重绘");
+            running=1;   // ★ 恢复解码
+            break;
+        case APP_CMD_TERM_WINDOW:
+            LOGI("窗口销毁 - 立即暂停解码");
+            running = 0;  // ★ 立即暂停
+            break;
+        default:
+            break;
+    }
+}
+
+
 // ==================== NativeActivity 入口 ====================
 void android_main(struct android_app* app) {
     LOGI("NativeActivity 启动");
     app->onInputEvent = on_input_event;
+    app->onAppCmd = on_app_cmd;  // ★ 添加生命周期回调
     connect_touch_receiver();
-    
+    set_fullscreen(app);
     pthread_create(&videoThread, NULL, video_decode_thread, NULL);
     pthread_create(&audioThread, NULL, audio_decode_thread, NULL);
     
-    while (app->destroyRequested == 0) {
+    while (app->destroyRequested == 0&&running) {
         int ident;
         int events;
         struct android_poll_source* source;
         
-        while ((ident = ALooper_pollAll(0, NULL, &events, (void**)&source)) >= 0) {
+        while ((ident = ALooper_pollOnce(0, NULL, &events, (void**)&source)) >= 0) {
             if (source) {
                 source->process(app, source);
             }

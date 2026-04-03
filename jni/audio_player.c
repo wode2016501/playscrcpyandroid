@@ -25,6 +25,7 @@ typedef struct {
     SLPlayItf playerPlay;
     SLAndroidSimpleBufferQueueItf bufferQueue;
     int isPlaying;
+    int fd;
 } PCMPlayer;
 
 static PCMPlayer g_player;
@@ -36,11 +37,12 @@ void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void* context) {
     PCMPlayer* player = (PCMPlayer*)context;
     if (!player->isPlaying) return;
     
-    int fd = *(int*)context;
+    int fd = player->fd;
     int ret = readyz(fd, (char*)pcmBuffer, pcmBufferSize);
     if (ret > 0) {
         (*bq)->Enqueue(bq, pcmBuffer, ret);
     }
+    
 }
 
 void audio_play(int fd, int* running) {
@@ -93,8 +95,8 @@ void audio_play(int fd, int* running) {
     (*g_player.playerObject)->Realize(g_player.playerObject, SL_BOOLEAN_FALSE);
     (*g_player.playerObject)->GetInterface(g_player.playerObject, SL_IID_PLAY, &g_player.playerPlay);
     (*g_player.playerObject)->GetInterface(g_player.playerObject, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, &g_player.bufferQueue);
-    
-    (*g_player.bufferQueue)->RegisterCallback(g_player.bufferQueue, bufferQueueCallback, &fd);
+    g_player.fd=fd;
+    (*g_player.bufferQueue)->RegisterCallback(g_player.bufferQueue, bufferQueueCallback, &g_player);
     
     // 预加载数据
     int ret = readyz(fd, (char*)pcmBuffer, pcmBufferSize);

@@ -12,7 +12,10 @@ import android.view.SurfaceView;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.View;
-
+public class HelloJni extends Activity
+{
+    }
+/*
 public class HelloJni extends Activity
 {
 	static final String TAG = "TouchCapture";
@@ -179,3 +182,5 @@ public class HelloJni extends Activity
         return true;
     }
 }
+
+*/
