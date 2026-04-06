@@ -27,7 +27,6 @@
 
 
 
-
 // ==================== 全屏设置 ====================
 void set_fullscreen(struct android_app* app) {
     JNIEnv* env = NULL;
