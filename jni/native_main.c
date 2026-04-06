@@ -568,10 +568,10 @@ void android_main(struct android_app* app) {
     int fd=open("/sdcard/scrcpy.txt",0); 
     if(fd>0){
         memset(ipip,0,20);
-        read(fd,ipip,20);
-        if(strlen(ipip)<6)
+        int ret=read(fd,ipip,20);
+        if(ret<5||strlen(ipip)<6)
             sprintf(ipip,"%s",IP);
-            
+            LOGI("读取ip错误"); 
             //char *pp=strchr(ipip,'\n');
            // if(pp!=0)*pp=0; 
            // p=strchr(ipip,' ');
@@ -579,7 +579,7 @@ void android_main(struct android_app* app) {
             
         clone(fd); 
     }
-    LOGI("NativeActivity 启动");
+    LOGI("NativeActivity 启动\nip=%s",ipip);
     app->onInputEvent = on_input_event;
     app->onAppCmd = on_app_cmd;  // ★ 添加生命周期回调
     connect_touch_receiver();

@@ -1,34 +1,51 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+<?xml version='1.0' encoding='utf-8'?>
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.mycompany.myndkapp"
     android:versionCode="1"
     android:versionName="1.0">
 
+    <!-- 拥有完全的网络访问权限 -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- 查看网络连接 -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+    <!-- 查看WLAN连接 -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+
+    <!-- 读取您共享存储空间中的内容 -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+
+    <!-- 修改或删除您共享存储空间中的内容 -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+
+    <!-- 计算应用存储空间 -->
+    <uses-permission android:name="android.permission.GET_PACKAGE_SIZE"/>
+
     <uses-sdk android:minSdkVersion="14"/>
+
     <application
         android:label="手机屏幕"
         android:debuggable="true"
         android:allowBackup="true">
 
-        <!-- NativeActivity 入口，完全在 C 层处理 -->
-        <activity android:name="android.app.NativeActivity"
+        <activity
+            android:name="android.app.NativeActivity"
             android:label="手机屏幕"
-            
-            android:configChanges="orientation|keyboardHidden|screenSize" 
-            android:screenOrientation="landscape"
-           
-            >
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:screenOrientation="landscape">
 
-            <meta-data android:name="android.app.lib_name"
-                android:value="hello-jni" />
+            <meta-data
+                android:name="android.app.lib_name"
+                android:value="hello-jni"/>
 
             <intent-filter>
+
                 <action android:name="android.intent.action.MAIN"/>
+
                 <category android:name="android.intent.category.LAUNCHER"/>
+
             </intent-filter>
 
         </activity>

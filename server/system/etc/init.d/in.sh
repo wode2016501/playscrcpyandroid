@@ -1,4 +1,4 @@
 #! /system/bin/sh
 while sleep 1;do 
-inin
+inin 1080 1920
 done

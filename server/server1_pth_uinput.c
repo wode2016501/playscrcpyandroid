@@ -13,8 +13,8 @@
 #include <signal.h>
 
 #define PORT 9000
-#define SCREEN_WIDTH 2376
-#define SCREEN_HEIGHT 1080
+int  SCREEN_WIDTH= 1440;
+int  SCREEN_HEIGHT=3168;
 
 // 全局变量
 //static int uinput_fd = -1;
@@ -210,7 +210,11 @@ void signal_handler(int sig) {
 }
 
 // ==================== 主函数 ====================
-int main() {
+int main(int argc,char **argv) {
+	if(argc==3){
+		SCREEN_WIDTH =atoi(argv[1]);
+		SCREEN_HEIGHT= atoi(argv[2]);
+		}
 	int client_fd;
 	struct sockaddr_in server_addr, client_addr;
 	socklen_t client_len = sizeof(client_addr);
@@ -218,6 +222,8 @@ int main() {
 
 	printf("========================================\n");
 	printf("统一接收端（设备创建 + 网络接收）\n");
+		printf("分辨率%dx%d\n",SCREEN_WIDTH,SCREEN_HEIGHT);
+	
 	printf("========================================\n\n");
 
 	// 设置信号处理
