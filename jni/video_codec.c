@@ -12,6 +12,9 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
+extern int  RECEIVER_WIDTH ; 
+extern int  RECEIVER_HEIGHT; 
+
 // 读取函数声明
 int read_(int fd, char* buf, size_t size, int max_size);
 int readyz(int fd, char* buf, int size_max);
@@ -33,6 +36,11 @@ void video_decode(int fd, ANativeWindow* window, int* running) {
     width = ntohl(width);
     height = ntohl(height);
     LOGI("视频分辨率: %dx%d", width, height);
+    
+   // RECEIVER_WIDTH=height;
+    // RECEIVER_HEIGHT=width;
+    RECEIVER_WIDTH=width;
+    RECEIVER_HEIGHT=height;
     
     ANativeWindow_setBuffersGeometry(window, width, height, WINDOW_FORMAT_RGBX_8888);
     

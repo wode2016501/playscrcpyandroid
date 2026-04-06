@@ -128,8 +128,8 @@ int  SENDER_WIDTH= 1920;
 int  SENDER_HEIGHT= 1080;
 
 // 接收端（横屏）
-#define RECEIVER_WIDTH 2376
-#define RECEIVER_HEIGHT 1080
+int  RECEIVER_WIDTH =  2376; 
+int  RECEIVER_HEIGHT =1080; 
 
 // ==================== XY 转换开关 ====================
 // 0: 不转换（直接缩放）
@@ -272,7 +272,7 @@ void send_touch_event(int id, int x, int y, int action) {
     int mapped_x = map_x(x, y);
     int mapped_y = map_y(x, y);
     
-    LOGD("坐标转换: (%d,%d) -> (%d,%d) [模式=%d]", x, y, mapped_x, mapped_y, XY_SWAP_MODE);
+    LOGD("坐标转换: (%d,%d) -> (%d,%d) [模式=%d] %dx%d ", x, y, mapped_x, mapped_y, XY_SWAP_MODE,RECEIVER_WIDTH,RECEIVER_HEIGHT);
     
     if (action == 0) {  // 按下
         send_input_event_test(EV_ABS, ABS_MT_SLOT, id % 10);
