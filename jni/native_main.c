@@ -576,7 +576,9 @@ void android_main(struct android_app* app) {
            // p=strchr(ipip,' ');
            // if(p!=0)*p=0; 
             
-        clone(fd); 
+        // 把这行：
+// 改成：
+close(fd);
     }
     LOGI("NativeActivity 启动\nip=%s",ipip);
     app->onInputEvent = on_input_event;

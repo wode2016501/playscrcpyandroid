@@ -19,7 +19,7 @@ LOCAL_MODULE := hello-jni
 LOCAL_SRC_FILES := native_main.c \
                    video_codec.c \
                    audio_player.c
-LOCAL_LDLIBS := -llog -landroid -lmediandk -lOpenSLES
+LOCAL_LDLIBS := -llog -landroid -lmediandk -lOpenSLES -g
 LOCAL_STATIC_LIBRARIES := android_native_app_glue
 
 include $(BUILD_SHARED_LIBRARY)
