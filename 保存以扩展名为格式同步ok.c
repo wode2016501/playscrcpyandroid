@@ -1,6 +1,6 @@
 // record_ts_multi_format.c
 // 编译: gcc -o record_ts record_ts_multi_format.c -lavformat -lavcodec -lavutil -lswresample -lpthread
-// 【关键修复】音频PTS同步到全局时钟
+// 【最终完整版】音视频同步 + MP4修复
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +19,7 @@
 #include <libavcodec/avcodec.h>
 #include <libavutil/opt.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/dict.h>
 #include <libswresample/swresample.h>
 
 #define VIDEO_PORT 9999
@@ -66,7 +67,6 @@ static const FormatSpec supported_formats[] = {
     {NULL,      NULL,          NULL,       NULL,       0,          0}
 };
 
-// 【前向声明】
 int64_t get_time_us(void);
 int64_t get_video_pts_from_clock(void);
 int64_t get_audio_pts_from_clock(int sample_rate);
@@ -85,21 +85,18 @@ const FormatSpec *g_format_spec = NULL;
 int64_t g_start_time_us = 0;
 pthread_mutex_t g_sync_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// 【实现】获取当前时间（微秒）
 int64_t get_time_us(void) {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return (int64_t)tv.tv_sec * 1000000LL + tv.tv_usec;
 }
 
-// 【实现】基于全局时钟获取当前视频PTS
 int64_t get_video_pts_from_clock(void) {
     int64_t now_us = get_time_us();
     int64_t elapsed_us = now_us - g_start_time_us;
     return (elapsed_us * 90) / 1000;
 }
 
-// 【实现】基于全局时钟获取当前音频PTS
 int64_t get_audio_pts_from_clock(int sample_rate) {
     int64_t now_us = get_time_us();
     int64_t elapsed_us = now_us - g_start_time_us;
@@ -262,7 +259,6 @@ AudioEncoder* init_audio_encoder(int sample_rate, int channels) {
     return enc;
 }
 
-// 【关键修复】编码音频 - PTS同步到全局时钟
 void encode_audio(uint8_t *pcm_data, int pcm_size) {
     if (!g_audio_enc || !pcm_data || pcm_size <= 0) return;
     
@@ -280,7 +276,6 @@ void encode_audio(uint8_t *pcm_data, int pcm_size) {
                input_samples, (double)input_samples * 1000.0 / g_audio_enc->sample_rate);
     }
     
-    // 【关键修复】从全局时钟获取当前应有的PTS
     int64_t clock_pts = get_audio_pts_from_clock(g_audio_enc->sample_rate);
     int64_t pts_before = clock_pts;
     
@@ -349,7 +344,6 @@ void encode_audio(uint8_t *pcm_data, int pcm_size) {
             processed += chunk;
         }
         
-        // 【关键修复】同步PTS到全局时钟
         g_audio_enc->pts = get_audio_pts_from_clock(g_audio_enc->sample_rate);
     }
     
@@ -642,7 +636,15 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    ret = avformat_write_header(g_fmt_ctx, NULL);
+    // 【修复】为MP4添加选项以确保moov正确写入
+    AVDictionary *options = NULL;
+    if (strcmp(g_format_spec->format_name, "mp4") == 0) {
+        av_dict_set(&options, "movflags", "faststart", 0);
+    }
+    
+    ret = avformat_write_header(g_fmt_ctx, &options);
+    if (options) av_dict_free(&options);
+    
     if (ret < 0) {
         char errbuf[256];
         av_strerror(ret, errbuf, sizeof(errbuf));
@@ -665,36 +667,55 @@ int main(int argc, char *argv[]) {
     
     printf("\n[+] 完成文件...\n");
     
-    if (g_audio_enc) {
+    if (g_audio_enc && g_audio_enc->codec_ctx) {
+        printf("[+] 刷新音频编码器...\n");
         avcodec_send_frame(g_audio_enc->codec_ctx, NULL);
         while (1) {
             ret = avcodec_receive_packet(g_audio_enc->codec_ctx, g_audio_enc->pkt);
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
             if (ret < 0) break;
             
-            av_packet_rescale_ts(g_audio_enc->pkt, 
-                                g_audio_enc->codec_ctx->time_base, 
-                                g_audio_stream->time_base);
-            g_audio_enc->pkt->stream_index = g_audio_stream->index;
-            av_interleaved_write_frame(g_fmt_ctx, g_audio_enc->pkt);
-            av_packet_unref(g_audio_enc->pkt);
+            if (g_audio_stream && g_audio_enc->pkt) {
+                av_packet_rescale_ts(g_audio_enc->pkt, 
+                                    g_audio_enc->codec_ctx->time_base, 
+                                    g_audio_stream->time_base);
+                g_audio_enc->pkt->stream_index = g_audio_stream->index;
+                av_interleaved_write_frame(g_fmt_ctx, g_audio_enc->pkt);
+                av_packet_unref(g_audio_enc->pkt);
+            }
         }
     }
     
+    printf("[+] 写入文件尾部...\n");
     av_write_trailer(g_fmt_ctx);
     
-    if (g_audio_enc) {
-        av_frame_free(&g_audio_enc->frame);
-        av_packet_free(&g_audio_enc->pkt);
-        swr_free(&g_audio_enc->swr_ctx);
-        avcodec_free_context(&g_audio_enc->codec_ctx);
-        free(g_audio_enc);
+    printf("[+] 清理资源...\n");
+    
+    if (g_fmt_ctx) {
+        if (g_fmt_ctx->pb) {
+            avio_close(g_fmt_ctx->pb);
+        }
+        avformat_free_context(g_fmt_ctx);
+        g_fmt_ctx = NULL;
     }
     
-    avio_close(g_fmt_ctx->pb);
-    avformat_free_context(g_fmt_ctx);
-    close(g_video_fd);
-    if (g_audio_fd >= 0) close(g_audio_fd);
+    if (g_audio_enc) {
+        if (g_audio_enc->frame) av_frame_free(&g_audio_enc->frame);
+        if (g_audio_enc->pkt) av_packet_free(&g_audio_enc->pkt);
+        if (g_audio_enc->swr_ctx) swr_free(&g_audio_enc->swr_ctx);
+        if (g_audio_enc->codec_ctx) avcodec_free_context(&g_audio_enc->codec_ctx);
+        free(g_audio_enc);
+        g_audio_enc = NULL;
+    }
+    
+    if (g_video_fd >= 0) {
+        close(g_video_fd);
+        g_video_fd = -1;
+    }
+    if (g_audio_fd >= 0) {
+        close(g_audio_fd);
+        g_audio_fd = -1;
+    }
     
     printf("[+] 完成! 文件: %s\n", output_file);
     return 0;
